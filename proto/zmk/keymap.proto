@@ -16,6 +16,15 @@ message Request {
         RemoveLayerRequest remove_layer = 10;
         RestoreLayerRequest restore_layer = 11;
         SetLayerPropsRequest set_layer_props = 12;
+
+        // Fork (lenerdz): per-layer LED color maps. Tags >= 100 are reserved for
+        // this fork so that a future upstream addition cannot collide with them.
+        bool get_led_info = 100;
+        uint32 get_led_map = 101;           // layer_id
+        SetLedColorsRequest set_led_colors = 102;
+        bool save_led_changes = 103;
+        bool discard_led_changes = 104;
+        uint32 restore_led_defaults = 105;  // layer_id
     }
 }
 
@@ -33,12 +42,23 @@ message Response {
         RemoveLayerResponse remove_layer = 10;
         RestoreLayerResponse restore_layer = 11;
         SetLayerPropsResponse set_layer_props = 12;
+
+        // Fork (lenerdz): per-layer LED color maps.
+        LedInfo get_led_info = 100;
+        LedMap get_led_map = 101;
+        SetLedColorsResponse set_led_colors = 102;
+        SaveChangesResponse save_led_changes = 103;  // reuses the keymap result type
+        bool discard_led_changes = 104;
+        LedMap restore_led_defaults = 105;           // the map after the restore
     }
 }
 
 message Notification {
     oneof notification_type {
         bool unsaved_changes_status_changed = 1;
+
+        // Fork (lenerdz): true when any LED map differs from what is saved.
+        bool unsaved_led_changes_status_changed = 100;
     }
 }
 
@@ -209,4 +229,44 @@ message KeyPhysicalAttrs {
     sint32 r = 5;
     sint32 rx = 6;
     sint32 ry = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Fork (lenerdz): per-layer LED color maps
+//
+// A map has `slot_count` slots, each one 24-bit 0xRRGGBB color. On the
+// keyboard this fork is used on (a Corne with 54 slots):
+//   0..41   key positions (the same numbering as the keymap bindings)
+//   42..47  left underglow (LED chain order)
+//   48..53  right underglow (LED chain order)
+// A map belongs to a layer and is addressed by that layer's id (Layer.id from
+// get_keymap), so it follows the layer when the layers are reordered.
+// ---------------------------------------------------------------------------
+
+message LedInfo {
+    uint32 slot_count = 1;
+    repeated uint32 layer_ids = 2;  // ids of the layers that own an editable map
+    bool unsaved_changes = 3;
+}
+
+message LedMap {
+    uint32 layer_id = 1;
+    repeated uint32 colors = 2;     // exactly 54 entries; entries >= slot_count are 0
+}
+
+message LedColorEntry {
+    uint32 slot = 1;
+    uint32 rgb = 2;                 // 0xRRGGBB
+}
+
+message SetLedColorsRequest {
+    uint32 layer_id = 1;
+    repeated LedColorEntry entries = 2;  // at most 16 per request
+}
+
+enum SetLedColorsResponse {
+    SET_LED_COLORS_RESP_OK = 0;
+    SET_LED_COLORS_RESP_INVALID_LAYER = 1;
+    SET_LED_COLORS_RESP_INVALID_SLOT = 2;
+    SET_LED_COLORS_RESP_BUSY = 3;
 }
