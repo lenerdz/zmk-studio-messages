@@ -25,6 +25,11 @@ message Request {
         bool save_led_changes = 103;
         bool discard_led_changes = 104;
         uint32 restore_led_defaults = 105;  // layer_id
+
+        // Fork (lenerdz): display (OLED) settings, tags 106 to 108.
+        bool get_display_info = 106;
+        SetDisplaySettingRequest set_display_setting = 107;
+        bool restore_display_defaults = 108;
     }
 }
 
@@ -50,6 +55,11 @@ message Response {
         SaveChangesResponse save_led_changes = 103;  // reuses the keymap result type
         bool discard_led_changes = 104;
         LedMap restore_led_defaults = 105;           // the map after the restore
+
+        // Fork (lenerdz): display (OLED) settings.
+        DisplayInfo get_display_info = 106;
+        SetDisplaySettingResponse set_display_setting = 107;
+        DisplayInfo restore_display_defaults = 108;  // the settings after the restore
     }
 }
 
@@ -269,4 +279,38 @@ enum SetLedColorsResponse {
     SET_LED_COLORS_RESP_INVALID_LAYER = 1;
     SET_LED_COLORS_RESP_INVALID_SLOT = 2;
     SET_LED_COLORS_RESP_BUSY = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Fork (lenerdz): display (OLED) settings
+//
+// A list of numbered integer settings. For every setting it has, the firmware
+// reports the current value and the range, so a client can draw a control
+// without knowing the setting; the meaning of the ids is fixed (see README.md)
+// so that a client can also label them. A change takes effect on the keyboard
+// at once and the firmware keeps it across restarts by itself: there is no
+// save or discard request.
+// ---------------------------------------------------------------------------
+
+message DisplayInfo {
+    repeated DisplaySetting settings = 1;  // one entry per setting of the firmware
+}
+
+message DisplaySetting {
+    uint32 id = 1;
+    int32 value = 2;
+    int32 min = 3;
+    int32 max = 4;
+    int32 default_value = 5;
+}
+
+message SetDisplaySettingRequest {
+    uint32 id = 1;
+    int32 value = 2;
+}
+
+enum SetDisplaySettingResponse {
+    SET_DISPLAY_SETTING_RESP_OK = 0;
+    SET_DISPLAY_SETTING_RESP_INVALID_ID = 1;
+    SET_DISPLAY_SETTING_RESP_INVALID_VALUE = 2;
 }

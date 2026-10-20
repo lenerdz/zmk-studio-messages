@@ -9,7 +9,7 @@ This repository contains the message definitions used to interract with ZMK Stud
 
 ## Fork changes: LED color maps
 
-This is the [lenerdz/zmk-studio-messages](https://github.com/lenerdz/zmk-studio-messages) fork of [zmkfirmware/zmk-studio-messages](https://github.com/zmkfirmware/zmk-studio-messages). It adds a small set of requests to the `keymap` subsystem so that a ZMK Studio client can read and edit the per-layer LED color maps of the [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) module.
+This is the [lenerdz/zmk-studio-messages](https://github.com/lenerdz/zmk-studio-messages) fork of [zmkfirmware/zmk-studio-messages](https://github.com/zmkfirmware/zmk-studio-messages). It adds a small set of requests to the `keymap` subsystem so that a ZMK Studio client can read and edit the per-layer LED color maps of the [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) module, and its display (OLED) settings (see [Fork changes: display settings](#fork-changes-display-settings)).
 
 Every upstream message and tag is unchanged. The new members of the `oneof` fields use tags `>= 100` (upstream uses small numbers today), so a future upstream addition cannot collide with them. ZMK stores the request tag in a `uint8_t`, so tags must stay below 256.
 
@@ -51,10 +51,36 @@ The sizes come from `keymap.options.in` (nanopb, no heap and no callbacks):
 | Field | Limit |
 |---|---|
 | `LedMap.colors` | exactly 54 entries |
-| `LedInfo.layer_ids` | 8 entries |
+| `LedInfo.layer_ids` | 15 entries (layer ids 0 to 14) |
+| `DisplayInfo.settings` | 16 entries |
 | `SetLedColorsRequest.entries` | 16 entries (a client sends a larger edit in several requests) |
 
-### Using it in a ZMK config
+## Fork changes: display settings
+
+The same fork adds three more requests to the `keymap` subsystem, for the display (OLED) settings that the [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) module keeps: the contrast of each screen, when the screens turn off, and the light toast of [lenerdz/zmk-nice-oled](https://github.com/lenerdz/zmk-nice-oled). Their tags are 106 to 108, in the same reserved range (`>= 100`), and a firmware without the handlers answers them with `RPC_NOT_FOUND`, like the light requests.
+
+The settings are a list of numbered integers. For each setting it has, the firmware reports the current value and the range, so a client can draw a control without knowing the setting; the meaning of the ids is fixed (table below) so that a client can also label them. A change takes effect on the keyboard at once and the firmware keeps it across restarts by itself, so there is no save or discard request and no notification. All the requests are secured: the keyboard has to be unlocked.
+
+| Request (tag) | Payload | Response (tag) |
+|---|---|---|
+| `get_display_info` (106) | `bool` | `DisplayInfo`: the list of `DisplaySetting` (`id`, `value`, `min`, `max`, `default_value`) |
+| `set_display_setting` (107) | `SetDisplaySettingRequest`: `id` and `value` | `SetDisplaySettingResponse`: `OK`, `INVALID_ID` or `INVALID_VALUE` |
+| `restore_display_defaults` (108) | `bool` | `DisplayInfo`: the settings after they went back to the firmware defaults |
+
+The ids this fork defines (the firmware of [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) is the reference; ids stay below 16):
+
+| Id | Setting | Range | Default |
+|---|---|---|---|
+| 1 | Contrast of the left (central) screen | 0 to 255 | 128 |
+| 2 | Contrast of the right (peripheral) screen | 0 to 255 | 128 |
+| 3 | When the screen goes off after the keyboard goes idle: 0 never, 1 only on battery (it stays on while USB is connected), 2 always | 0 to 2 | 0 |
+| 4 | Seconds without activity before the screen goes off; not less than the idle timeout of the keyboard (`CONFIG_ZMK_IDLE_TIMEOUT`, 30 s by default); only used when id 3 is not 0 | the idle timeout to 3600 | 60 |
+| 5 | Light toast on the right screen: 0 off, 1 on (only has an effect when the right half is built with the toast widget) | 0 to 1 | 1 |
+| 6 | How long the toast stays on screen, in milliseconds | 500 to 5000 | 1500 |
+
+A client should draw a control from the `min`, `max` and `default_value` the firmware reports, not from this table: the table says what each id means. A firmware may omit a setting it does not have, and a client should show an id it does not know as a plain number.
+
+## Using it in a ZMK config
 
 Pin this fork in the `west.yml` of the config repository. The project name and the path have to match the upstream entry of ZMK's `app/west.yml`, so this entry replaces it:
 
