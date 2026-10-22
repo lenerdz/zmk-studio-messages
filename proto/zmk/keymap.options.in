@@ -2,4 +2,3 @@ zmk.keymap.SetLayerPropsRequest.name max_size:@CONFIG_ZMK_KEYMAP_LAYER_NAME_MAX_
 zmk.keymap.LedInfo.layer_ids max_count:15
 zmk.keymap.LedMap.colors max_count:54 fixed_count:true
 zmk.keymap.SetLedColorsRequest.entries max_count:16
-zmk.keymap.DisplayInfo.settings max_count:16
