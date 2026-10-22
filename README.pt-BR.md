@@ -9,7 +9,7 @@ Este repositório contém as definições de mensagens usadas para interagir com
 
 ## Mudanças do fork: mapas de cor dos LEDs
 
-Este é o fork [lenerdz/zmk-studio-messages](https://github.com/lenerdz/zmk-studio-messages) de [zmkfirmware/zmk-studio-messages](https://github.com/zmkfirmware/zmk-studio-messages). Ele acrescenta um pequeno conjunto de requisições ao subsistema `keymap`, para que um cliente do ZMK Studio possa ler e editar os mapas de cor dos LEDs de cada camada do módulo [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix), e as configurações de tela (OLED) dele (veja [Mudanças do fork: configurações de tela](#mudanças-do-fork-configurações-de-tela)).
+Este é o fork [lenerdz/zmk-studio-messages](https://github.com/lenerdz/zmk-studio-messages) de [zmkfirmware/zmk-studio-messages](https://github.com/zmkfirmware/zmk-studio-messages). Ele acrescenta um pequeno conjunto de requisições ao subsistema `keymap`, para que um cliente do ZMK Studio possa ler e editar os mapas de cor dos LEDs de cada camada do módulo [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix), e as configurações de tela (OLED) dele, que incluem o layout das telas (veja [Mudanças do fork: configurações de tela](#mudanças-do-fork-configurações-de-tela)).
 
 Toda mensagem e toda tag do upstream continuam iguais. Os novos membros dos campos `oneof` usam tags `>= 100` (o upstream usa números pequenos hoje), de modo que uma futura adição do upstream não pode colidir com eles. O ZMK guarda a tag da requisição em um `uint8_t`, então as tags precisam ficar abaixo de 256.
 
@@ -46,20 +46,21 @@ Uma edição vale no teclado na hora. Ela só é mantida entre reinicializaçõe
 
 ### Limites
 
-Os tamanhos vêm do `keymap.options.in` (nanopb, sem heap e sem callbacks):
+Os tamanhos vêm do `keymap.options.in` (nanopb, sem heap). Os campos abaixo são vetores de capacidade fixa; `DisplayInfo.settings` é a única lista que não tem limite (veja [Mudanças do fork: configurações de tela](#mudanças-do-fork-configurações-de-tela)):
 
 | Campo | Limite |
 |---|---|
 | `LedMap.colors` | exatamente 54 entradas |
 | `LedInfo.layer_ids` | 15 entradas (ids de camada de 0 a 14) |
-| `DisplayInfo.settings` | 16 entradas |
 | `SetLedColorsRequest.entries` | 16 entradas (um cliente envia uma edição maior em várias requisições) |
 
 ## Mudanças do fork: configurações de tela
 
-O mesmo fork acrescenta mais três requisições ao subsistema `keymap`, para as configurações de tela (OLED) que o módulo [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) guarda: o contraste de cada tela, quando as telas apagam e o aviso das luzes (toast) do [lenerdz/zmk-nice-oled](https://github.com/lenerdz/zmk-nice-oled). As tags delas são 106 a 108, na mesma faixa reservada (`>= 100`), e um firmware sem os handlers responde a elas com `RPC_NOT_FOUND`, como nas requisições das luzes.
+O mesmo fork acrescenta mais três requisições ao subsistema `keymap`, para as configurações de tela (OLED) que o módulo [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) guarda: o contraste de cada tela, quando as telas apagam, o aviso das luzes (toast) do [lenerdz/zmk-nice-oled](https://github.com/lenerdz/zmk-nice-oled) e, com o layout das telas OLED, quais widgets das telas dele são desenhados, onde, e qual animação a tela direita toca. As tags delas são 106 a 108, na mesma faixa reservada (`>= 100`), e um firmware sem os handlers responde a elas com `RPC_NOT_FOUND`, como nas requisições das luzes.
 
 As configurações são uma lista de inteiros numerados. Para cada configuração que tem, o firmware informa o valor atual e a faixa, de modo que um cliente desenha um controle sem conhecer a configuração; o significado dos ids é fixo (tabela abaixo) para que um cliente também possa rotulá-los. Uma mudança vale no teclado na hora e o firmware a mantém entre reinicializações por conta própria, então não há requisição de salvar nem de descartar e não há notificação. Todas as requisições são protegidas: o teclado precisa estar desbloqueado.
+
+A lista não tem tamanho fixo. O `DisplayInfo.settings` não tem `max_count` no `keymap.options.in`, então o nanopb o transforma em um campo com callback: o firmware escreve quantas entradas tiver, uma depois da outra, e um cliente lê todas as que chegam. O formato no fio é o de qualquer campo repetido, então o cliente TypeScript gerado não muda, e a resposta não aumenta a union que o ZMK Studio mantém na pilha.
 
 | Requisição (tag) | Conteúdo | Resposta (tag) |
 |---|---|---|
@@ -67,7 +68,7 @@ As configurações são uma lista de inteiros numerados. Para cada configuraçã
 | `set_display_setting` (107) | `SetDisplaySettingRequest`: `id` e `value` | `SetDisplaySettingResponse`: `OK`, `INVALID_ID` ou `INVALID_VALUE` |
 | `restore_display_defaults` (108) | `bool` | `DisplayInfo`: as configurações depois de voltarem aos padrões do firmware |
 
-Os ids que este fork define (o firmware do [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) é a referência; os ids ficam abaixo de 16):
+Os ids que este fork define (o firmware do [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) é a referência; os ids ficam abaixo de 256, porque o firmware os envia a uma periférica em 8 bits):
 
 | Id | Configuração | Faixa | Padrão |
 |---|---|---|---|
@@ -77,6 +78,25 @@ Os ids que este fork define (o firmware do [lenerdz/zmk-rgb-matrix](https://gith
 | 4 | Segundos sem atividade antes de a tela apagar; não menos que o tempo de ociosidade do teclado (`CONFIG_ZMK_IDLE_TIMEOUT`, 30 s por padrão); só vale quando o id 3 não é 0 | do tempo de ociosidade a 3600 | 60 |
 | 5 | Aviso das luzes (toast) na tela direita: 0 desligado, 1 ligado (só tem efeito quando a metade direita é compilada com o widget do toast) | 0 a 1 | 1 |
 | 6 | Quanto tempo o toast fica na tela, em milissegundos | 500 a 5000 | 1500 |
+
+A partir do id 16 vêm as configurações do layout das telas OLED: um bloco de oito ids por widget, em `16 + 8 * n`. Em um bloco, `+0` diz se o widget é desenhado (0 ou 1, padrão 1), `+1` é o x dele e `+2` o y (pixels, de -160 a 320) e, para a animação da tela direita, `+3` é o tipo dela e `+4` o tempo de um ciclo. O firmware lista só os widgets com que foi compilado, e os padrões são o que o build diz (as opções `CONFIG_NICE_OLED_WIDGET_*` do [lenerdz/zmk-nice-oled](https://github.com/lenerdz/zmk-nice-oled)), então um cliente precisa lê-los do `default_value`.
+
+| Ids | Widget | Tela |
+|---|---|---|
+| 16 a 20 | animação ou imagem parada: mostrar, x, y, tipo (0 crystal, 1 cat, 2 head, 3 spaceman, 4 pokemon, 5 vim, 6 vip_marcos), tempo de um ciclo em milissegundos (0, ou 100 a 60000; 0 é o tempo da animação) | direita |
+| 24 a 26 | bateria da metade direita | direita |
+| 32 a 34 | ícone de Bluetooth | direita |
+| 41 e 42 | toast das luzes: x e y da primeira linha dele (não tem interruptor próprio: o interruptor é o id 5) | direita |
+| 48 a 50 | ícone de USB ou Bluetooth da saída ativa | esquerda |
+| 56 a 58 | bateria | esquerda |
+| 64 a 66 | os cinco pontos dos perfis Bluetooth | esquerda |
+| 72 a 74 | número do perfil Bluetooth ativo | esquerda |
+| 80 a 82 | nome da camada ativa | esquerda |
+| 88 a 90 | velocímetro de WPM | esquerda |
+| 96 a 98 | número de WPM | esquerda |
+| 104 a 106 | gráfico de WPM | esquerda |
+
+As coordenadas são as do canvas em que os widgets são desenhados, com uma exceção, a animação da tela direita. As condições de cada entrada e a conversão das coordenadas da animação estão na seção [OLED layout](https://github.com/lenerdz/zmk-rgb-matrix/blob/corne-fixes/README.md#oled-layout) do README do módulo.
 
 Um cliente deve desenhar um controle a partir do `min`, do `max` e do `default_value` que o firmware informa, e não a partir desta tabela: a tabela diz o que cada id significa. Um firmware pode omitir uma configuração que não tem, e um cliente deve mostrar um id que não conhece como um número simples.
 
