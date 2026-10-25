@@ -30,6 +30,10 @@ message Request {
         bool get_display_info = 106;
         SetDisplaySettingRequest set_display_setting = 107;
         bool restore_display_defaults = 108;
+
+        // Fork (lenerdz): live status and firmware information (read only), tags 109 and 110.
+        bool get_live_status = 109;
+        bool get_firmware_info = 110;
     }
 }
 
@@ -60,6 +64,10 @@ message Response {
         DisplayInfo get_display_info = 106;
         SetDisplaySettingResponse set_display_setting = 107;
         DisplayInfo restore_display_defaults = 108;  // the settings after the restore
+
+        // Fork (lenerdz): live status and firmware information.
+        LiveStatus get_live_status = 109;
+        FirmwareInfo get_firmware_info = 110;
     }
 }
 
@@ -313,4 +321,65 @@ enum SetDisplaySettingResponse {
     SET_DISPLAY_SETTING_RESP_OK = 0;
     SET_DISPLAY_SETTING_RESP_INVALID_ID = 1;
     SET_DISPLAY_SETTING_RESP_INVALID_VALUE = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Fork (lenerdz): live status and firmware information (read only)
+//
+// get_live_status is one snapshot of what the screens of the keyboard draw
+// right now; a client that wants a live view asks for it again and again (a
+// few times per second is enough, and it is cheap). get_firmware_info says
+// what the firmware is and how much flash and RAM it uses; it does not change
+// while the keyboard runs, so it is asked once.
+//
+// ZMK Studio talks to the central half (the one on USB), so every value is that
+// half's, except the two that it knows about the other half: whether it is
+// connected and its battery level. Nothing is kept: there is no save request,
+// and no notification.
+// ---------------------------------------------------------------------------
+
+enum LiveOutput {
+    LIVE_OUTPUT_NONE = 0;       // no host: the keyboard is not connected to anything
+    LIVE_OUTPUT_USB = 1;
+    LIVE_OUTPUT_BLE = 2;
+}
+
+enum LiveBleState {
+    LIVE_BLE_OPEN = 0;          // the profile has no host paired (it is advertising)
+    LIVE_BLE_PAIRED = 1;        // paired, but its host is not connected
+    LIVE_BLE_CONNECTED = 2;
+}
+
+enum LiveUsbState {
+    LIVE_USB_NONE = 0;          // nothing on the USB connector
+    LIVE_USB_POWERED = 1;       // power, but the host has not set the keyboard up yet
+    LIVE_USB_HID = 2;           // the host uses the keyboard
+}
+
+message LiveStatus {
+    uint32 battery_central = 1;     // percent from 0 to 100; 255 when there is no reading
+    uint32 battery_peripheral = 2;  // percent from 0 to 100; 255 when the other half has not reported
+    bool peripheral_connected = 3;
+    uint32 layer_index = 4;         // the highest active layer, as its index in the keymap order
+    string layer_name = 5;          // the name of that layer (empty when it has none)
+    uint32 wpm = 6;                 // words per minute now
+    LiveOutput output = 7;          // where the keys go now
+    uint32 ble_profile = 8;         // the selected Bluetooth profile, from 0
+    LiveBleState ble_state = 9;     // the state of that profile
+    LiveUsbState usb_state = 10;    // the state of the USB connector
+    uint32 uptime_s = 11;           // seconds since the keyboard started
+}
+
+message FirmwareInfo {
+    string keyboard = 1;            // the name of the keyboard (CONFIG_ZMK_KEYBOARD_NAME)
+    string board = 2;               // the board (CONFIG_BOARD)
+    string zephyr = 3;              // the version of Zephyr
+    string build_id = 4;            // the commit that was built, short; empty when it is not known
+    string build_branch = 5;        // the branch of that commit; empty when it is not known
+    uint32 build_number = 6;        // the number of the CI run that built it; 0 when it is not known
+    string build_date = 7;          // the day it was built, yyyy-mm-dd (UTC)
+    uint32 flash_total = 8;         // bytes of flash for the program (the code partition)
+    uint32 flash_used = 9;          // bytes of it that the program takes
+    uint32 ram_total = 10;          // bytes of RAM
+    uint32 ram_used = 11;           // bytes of it that the program takes at start (data, bss, stacks, heap)
 }

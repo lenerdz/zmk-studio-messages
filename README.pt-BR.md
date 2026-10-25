@@ -83,7 +83,8 @@ A partir do id 16 vêm as configurações do layout das telas OLED: um bloco de 
 
 | Ids | Widget | Tela |
 |---|---|---|
-| 16 a 20 | animação ou imagem parada: mostrar, x, y, tipo (0 crystal, 1 cat, 2 head, 3 spaceman, 4 pokemon, 5 vim, 6 vip_marcos), tempo de um ciclo em milissegundos (0, ou 100 a 60000; 0 é o tempo da animação) | direita |
+| 16 a 20 | animação ou imagem parada: mostrar, x, y, tipo (0 crystal, 1 cat, 2 head, 3 spaceman, 4 pokemon, 5 vim, 6 vip_marcos, e de 7 a 65 as imagens que o `make_pictures.py` do zmk-nice-oled desenha), tempo de um ciclo em milissegundos (0, ou 100 a 60000; 0 é o tempo da animação) | direita |
+| 112 a 115 | a mesma animação ou imagem parada: giro (0 a 3 quartos de volta), mistura (0 soma, 1 inverte), canto do pedaço que aparece (`x \| y << 8`) e o tamanho dele (`w \| h << 8`) | direita |
 | 24 a 26 | bateria da metade direita | direita |
 | 32 a 34 | ícone de Bluetooth | direita |
 | 41 e 42 | toast das luzes: x e y da primeira linha dele (não tem interruptor próprio: o interruptor é o id 5) | direita |
@@ -100,7 +101,51 @@ As coordenadas são as do canvas em que os widgets são desenhados, com uma exce
 
 Um cliente deve desenhar um controle a partir do `min`, do `max` e do `default_value` que o firmware informa, e não a partir desta tabela: a tabela diz o que cada id significa. Um firmware pode omitir uma configuração que não tem, e um cliente deve mostrar um id que não conhece como um número simples.
 
+## Mudanças do fork: estado ao vivo e informações do firmware
+
+O mesmo fork acrescenta duas requisições somente de leitura ao subsistema `keymap`, tags 109 e 110 (a mesma faixa reservada, `>= 100`), para que um cliente veja o que o teclado está fazendo agora e que firmware ele executa. O módulo [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) responde a elas (`CONFIG_KEYPAW_DEVICE_STATUS_STUDIO`), e um firmware sem os handlers responde `RPC_NOT_FOUND`, como nas outras requisições do fork. As duas são protegidas: o teclado precisa estar desbloqueado. Elas não mudam nada e não guardam nada: não há requisição de salvar e não há notificação, então um cliente que quer uma visão ao vivo pede `get_live_status` de novo e de novo.
+
+| Requisição (tag) | Conteúdo | Resposta (tag) |
+|---|---|---|
+| `get_live_status` (109) | `bool` | `LiveStatus` |
+| `get_firmware_info` (110) | `bool` | `FirmwareInfo` |
+
+`LiveStatus` é o que as telas do teclado desenham agora:
+
+| Campo (número) | Tipo | Significado |
+|---|---|---|
+| `battery_central` (1) | `uint32` | bateria da metade central, de 0 a 100; 255 quando não há leitura |
+| `battery_peripheral` (2) | `uint32` | bateria da metade periférica, de 0 a 100; 255 quando ela ainda não informou |
+| `peripheral_connected` (3) | `bool` | a central enxerga a periférica |
+| `layer_index` (4) | `uint32` | a camada ativa mais alta, como o índice dela na ordem do keymap |
+| `layer_name` (5) | `string` | o nome dessa camada; vazio quando ela não tem |
+| `wpm` (6) | `uint32` | palavras por minuto agora |
+| `output` (7) | `LiveOutput` | para onde vão as teclas: `LIVE_OUTPUT_NONE` (0), `LIVE_OUTPUT_USB` (1) ou `LIVE_OUTPUT_BLE` (2) |
+| `ble_profile` (8) | `uint32` | o perfil Bluetooth selecionado, a partir de 0 |
+| `ble_state` (9) | `LiveBleState` | o estado desse perfil: `LIVE_BLE_OPEN` (0, nenhum host pareado), `LIVE_BLE_PAIRED` (1, host não conectado) ou `LIVE_BLE_CONNECTED` (2) |
+| `usb_state` (10) | `LiveUsbState` | o conector USB: `LIVE_USB_NONE` (0), `LIVE_USB_POWERED` (1, energia, mas o host ainda não configurou o teclado) ou `LIVE_USB_HID` (2, o host o usa) |
+| `uptime_s` (11) | `uint32` | segundos desde que o teclado ligou |
+
+`FirmwareInfo` diz o que o firmware é, e não muda enquanto o teclado funciona:
+
+| Campo (número) | Tipo | Significado |
+|---|---|---|
+| `keyboard` (1) | `string` | o nome do teclado |
+| `board` (2) | `string` | a placa |
+| `zephyr` (3) | `string` | a versão do Zephyr |
+| `build_id` (4) | `string` | o commit que foi compilado, curto; vazio quando não se sabe |
+| `build_branch` (5) | `string` | a branch desse commit; vazio quando não se sabe |
+| `build_number` (6) | `uint32` | o número da execução do CI que o compilou; 0 quando não se sabe |
+| `build_date` (7) | `string` | o dia em que foi compilado, `yyyy-mm-dd` (UTC) |
+| `flash_total` (8) | `uint32` | bytes de flash para o programa (a partição de código) |
+| `flash_used` (9) | `uint32` | bytes dela que o programa ocupa |
+| `ram_total` (10) | `uint32` | bytes de RAM |
+| `ram_used` (11) | `uint32` | bytes dela que o programa ocupa assim que começa |
+
+Os valores são os da metade central, porque o ZMK Studio fala com ela: tudo o que ela diz sobre a outra metade é se está conectada e o nível da bateria. As strings têm um tamanho no `keymap.options.in`, e o firmware corta o que não cabe: `layer_name` `CONFIG_ZMK_KEYMAP_LAYER_NAME_MAX_LEN` (o limite do nome em `SetLayerPropsRequest`), `keyboard` e `board` 32 bytes, `zephyr` 24, `build_id` 16, `build_branch` 48 e `build_date` 12 (cada uma com o seu fim de string). As mensagens novas não aumentam a union que o ZMK Studio mantém na pilha: com o nanopb, `Request` tem 140 bytes e `Response` 232, com e sem elas.
+
 ## Usando em uma config do ZMK
+
 
 Fixe este fork no `west.yml` do repositório de configuração. O nome do projeto e o caminho precisam ser iguais ao da entrada do upstream no `app/west.yml` do ZMK, então esta entrada a substitui:
 

@@ -83,7 +83,8 @@ From id 16 up come the settings of the OLED layout: one block of eight ids per w
 
 | Ids | Widget | Screen |
 |---|---|---|
-| 16 to 20 | animation or still image: shown, x, y, kind (0 crystal, 1 cat, 2 head, 3 spaceman, 4 pokemon, 5 vim, 6 vip_marcos), time of one cycle in milliseconds (0, or 100 to 60000; 0 is the time of the animation) | right |
+| 16 to 20 | animation or still image: shown, x, y, kind (0 crystal, 1 cat, 2 head, 3 spaceman, 4 pokemon, 5 vim, 6 vip_marcos, and 7 to 65 the pictures that `make_pictures.py` of zmk-nice-oled draws), time of one cycle in milliseconds (0, or 100 to 60000; 0 is the time of the animation) | right |
+| 112 to 115 | the same animation or still image: turn (0 to 3 quarter turns), mix (0 add, 1 invert), corner of the piece that shows (`x \| y << 8`) and its size (`w \| h << 8`) | right |
 | 24 to 26 | battery of the right half | right |
 | 32 to 34 | Bluetooth icon | right |
 | 41 and 42 | light toast: x and y of its first line (it has no switch of its own: the switch is id 5) | right |
@@ -100,7 +101,51 @@ The coordinates are those of the canvas the widgets are drawn on, with one excep
 
 A client should draw a control from the `min`, `max` and `default_value` the firmware reports, not from this table: the table says what each id means. A firmware may omit a setting it does not have, and a client should show an id it does not know as a plain number.
 
+## Fork changes: live status and firmware information
+
+The same fork adds two read only requests to the `keymap` subsystem, tags 109 and 110 (the same reserved range, `>= 100`), so that a client can see what the keyboard is doing right now and what firmware it runs. The module [lenerdz/zmk-rgb-matrix](https://github.com/lenerdz/zmk-rgb-matrix) answers them (`CONFIG_KEYPAW_DEVICE_STATUS_STUDIO`), and a firmware without the handlers answers `RPC_NOT_FOUND`, like the other requests of the fork. Both are secured: the keyboard has to be unlocked. They change nothing and keep nothing: there is no save request and no notification, so a client that wants a live view asks `get_live_status` again and again.
+
+| Request (tag) | Payload | Response (tag) |
+|---|---|---|
+| `get_live_status` (109) | `bool` | `LiveStatus` |
+| `get_firmware_info` (110) | `bool` | `FirmwareInfo` |
+
+`LiveStatus` is what the screens of the keyboard draw right now:
+
+| Field (number) | Type | Meaning |
+|---|---|---|
+| `battery_central` (1) | `uint32` | battery of the central half, from 0 to 100; 255 when there is no reading |
+| `battery_peripheral` (2) | `uint32` | battery of the peripheral half, from 0 to 100; 255 when it has not reported |
+| `peripheral_connected` (3) | `bool` | the central sees the peripheral |
+| `layer_index` (4) | `uint32` | the highest active layer, as its index in the keymap order |
+| `layer_name` (5) | `string` | the name of that layer; empty when it has none |
+| `wpm` (6) | `uint32` | words per minute now |
+| `output` (7) | `LiveOutput` | where the keys go: `LIVE_OUTPUT_NONE` (0), `LIVE_OUTPUT_USB` (1) or `LIVE_OUTPUT_BLE` (2) |
+| `ble_profile` (8) | `uint32` | the selected Bluetooth profile, from 0 |
+| `ble_state` (9) | `LiveBleState` | the state of that profile: `LIVE_BLE_OPEN` (0, no host paired), `LIVE_BLE_PAIRED` (1, host not connected) or `LIVE_BLE_CONNECTED` (2) |
+| `usb_state` (10) | `LiveUsbState` | the USB connector: `LIVE_USB_NONE` (0), `LIVE_USB_POWERED` (1, power, but the host has not set the keyboard up) or `LIVE_USB_HID` (2, the host uses it) |
+| `uptime_s` (11) | `uint32` | seconds since the keyboard started |
+
+`FirmwareInfo` says what the firmware is, and does not change while the keyboard runs:
+
+| Field (number) | Type | Meaning |
+|---|---|---|
+| `keyboard` (1) | `string` | the name of the keyboard |
+| `board` (2) | `string` | the board |
+| `zephyr` (3) | `string` | the version of Zephyr |
+| `build_id` (4) | `string` | the commit that was built, short; empty when it is not known |
+| `build_branch` (5) | `string` | the branch of that commit; empty when it is not known |
+| `build_number` (6) | `uint32` | the number of the CI run that built it; 0 when it is not known |
+| `build_date` (7) | `string` | the day it was built, `yyyy-mm-dd` (UTC) |
+| `flash_total` (8) | `uint32` | bytes of flash for the program (the code partition) |
+| `flash_used` (9) | `uint32` | bytes of it that the program takes |
+| `ram_total` (10) | `uint32` | bytes of RAM |
+| `ram_used` (11) | `uint32` | bytes of it that the program takes as soon as it starts |
+
+The values are the central half's, because ZMK Studio talks to it: all it says about the other half is whether it is connected and its battery level. The strings have a size in `keymap.options.in`, and the firmware cuts what does not fit: `layer_name` `CONFIG_ZMK_KEYMAP_LAYER_NAME_MAX_LEN` (the limit of the name in `SetLayerPropsRequest`), `keyboard` and `board` 32 bytes, `zephyr` 24, `build_id` 16, `build_branch` 48 and `build_date` 12 (each with its end of string). The new messages do not enlarge the union that ZMK Studio keeps on its stack: with nanopb, `Request` is 140 bytes and `Response` 232, with and without them.
+
 ## Using it in a ZMK config
+
 
 Pin this fork in the `west.yml` of the config repository. The project name and the path have to match the upstream entry of ZMK's `app/west.yml`, so this entry replaces it:
 

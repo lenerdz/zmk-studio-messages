@@ -2,3 +2,10 @@ zmk.keymap.SetLayerPropsRequest.name max_size:@CONFIG_ZMK_KEYMAP_LAYER_NAME_MAX_
 zmk.keymap.LedInfo.layer_ids max_count:15
 zmk.keymap.LedMap.colors max_count:54 fixed_count:true
 zmk.keymap.SetLedColorsRequest.entries max_count:16
+zmk.keymap.LiveStatus.layer_name max_size:@CONFIG_ZMK_KEYMAP_LAYER_NAME_MAX_LEN@
+zmk.keymap.FirmwareInfo.keyboard max_size:32
+zmk.keymap.FirmwareInfo.board max_size:32
+zmk.keymap.FirmwareInfo.zephyr max_size:24
+zmk.keymap.FirmwareInfo.build_id max_size:16
+zmk.keymap.FirmwareInfo.build_branch max_size:48
+zmk.keymap.FirmwareInfo.build_date max_size:12
